@@ -408,11 +408,11 @@
             });
 
             var txt = "";
-            txt += "OT " + ot + " | " + nombreProyecto + " | Cant. " + cantidadTotal + "
-";
-            txt += "=========================================================================
-
-";
+            txt += "OT " + ot + " | " + nombreProyecto + " | Cant. " + cantidadTotal + "\n";
+            if (descripcion && descripcion.trim() !== "") {
+                txt += "Descripción: " + descripcion.trim() + "\n";
+            }
+            txt += "=========================================================================\n\n";
 
             piezasOutput.forEach(function(po) {
                 txt += "[" + po.nombre + "]
