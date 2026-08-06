@@ -240,18 +240,20 @@
 
                 // CORTE DE RESMAS INICIAL (Antes de impresión)
                 var servicios = pieza.querySelectorAll("servicios > servicio");
+                var tieneCorteResmas = false;
                 servicios.forEach(function(srv) {
                     var sNombre = getText(srv, "nombre");
                     var sTipo = getText(srv, "tipo");
-                    var sCant = parseFloat(getText(srv, "cantidad") || "1");
                     if (sTipo === "Corte" && (sNombre.includes("Inicial") || sNombre.includes("Intermedio"))) {
-                        var resmas = Math.ceil(pliegosBrutos / 500);
-                        if (resmas < 1) resmas = 1;
-                        resmas = resmas * sCant;
-                        var costoRes = resmas * PRECIO_RESMA;
-                        addLinea(resmas + " resmas — Corte de resmas", costoRes);
+                        tieneCorteResmas = true;
                     }
                 });
+                if (tieneCorteResmas) {
+                    var resmas = Math.ceil(pliegosBrutos / 500);
+                    if (resmas < 1) resmas = 1;
+                    var costoRes = resmas * PRECIO_RESMA;
+                    addLinea(resmas + " resmas \u2014 Corte de resmas", costoRes);
+                }
 
                 var maqConfig = null;
                 if (maquina.includes("SM74") || maquina.includes("SM 74")) maqConfig = "SM74";
