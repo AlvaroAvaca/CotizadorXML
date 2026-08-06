@@ -171,8 +171,10 @@
         // =====================================================================
         // MOTOR PRINCIPAL DE COTIZACIÓN
         // =====================================================================
-        function generarCotizacion(xml) {
-            var lineas = [];
+                function generarCotizacion(xml) {
+            var piezasOutput = [];
+            var generalesOutput = [];
+            var manuales = [];
             var totalNeto = 0;
 
             var ot = getText(xml, "ot");
@@ -181,12 +183,9 @@
             var descripcion = getText(xml, "descripcion") || "";
 
             var piezas = xml.querySelectorAll("piezas > pieza");
-            var planchasSM74 = 0;
-            var planchasSM102 = 0;
             var totalPosturasAlzado = 0;
-            var totalResmas = 0;
-            var totalHojasPorUnidad = 0; // para cálculo de perforación en anillado
-            var ladoCmMasLargo = 0; // para anillado: lado más largo del formato
+            var totalHojasPorUnidad = 0;
+            var ladoCmMasLargo = 0;
 
             piezas.forEach(function(pieza, index) {
                 var numPieza = index + 1;
@@ -195,10 +194,14 @@
                 var paginas = parseInt(getText(pieza, "num_paginas") || "1");
                 var montaje = getText(pieza, "montaje") || "";
 
-                // --- POSTURAS (pliegos por ejemplar) ---
-                // La fórmula correcta es: planchas / (colores_tiro + colores_retiro)
-                // Esto es autoritativo porque TwistPrint ya calculó exactamente cuántas
-                // planchas se necesitan por pieza.
+                var lineasPieza = [];
+                var subtotalPieza = 0;
+                function addLinea(texto, precio) {
+                    lineasPieza.push({ texto: texto, precio: precio });
+                    subtotalPieza += precio;
+                    totalNeto += precio;
+                }
+
                 var colTiro = parseInt(getText(pieza, "colores_tiro") || "0");
                 var colRetiro = parseInt(getText(pieza, "colores_retiro") || "0");
                 var numPlanchas = parseInt(getText(pieza, "planchas") || "0");
@@ -207,7 +210,6 @@
                 if (totalColores > 0 && numPlanchas > 0) {
                     posturas = numPlanchas / totalColores;
                 } else if (cotizadoComo === "Páginas" || cotizadoComo === "Hojas Iguales") {
-                    // Fallback si no hay planchas (ej: digital, corte)
                     var maqNombre = getText(pieza, "maquina > nombre");
                     if (montaje.includes("4x2N") || maqNombre.includes("102")) {
                         posturas = paginas / 16;
@@ -216,18 +218,11 @@
                     }
                 }
 
-                // Acumular posturas para alzado
                 totalPosturasAlzado += posturas;
+                if (cotizadoComo !== "Tapas") totalHojasPorUnidad += (paginas / 2);
 
-                // Acumular hojas por unidad (para perforación en anillado)
-                if (cotizadoComo !== "Tapas") {
-                    totalHojasPorUnidad += (paginas / 2);
-                }
-
-                // Capturar el formato más largo para el anillado
                 var formatoAltoMm = parseFloat(getText(pieza, "formato_alto") || getText(pieza, "alto") || "0");
                 var formatoAnchoMm = parseFloat(getText(pieza, "formato_ancho") || getText(pieza, "ancho") || "0");
-                // Intentar desde formato texto
                 if (formatoAltoMm === 0) {
                     var fmtMatch = (getText(pieza, "formato") || descripcion).match(/(\d+(?:[.,]\d+)?)\s*[xX]\s*(\d+(?:[.,]\d+)?)/);
                     if (fmtMatch) {
@@ -238,24 +233,34 @@
                 var ladoMayor = Math.max(formatoAltoMm, formatoAnchoMm);
                 if (ladoMayor > ladoCmMasLargo) ladoCmMasLargo = ladoMayor;
 
-                // --- IMPRESIÓN ---
                 var maquina = getText(pieza, "maquina > nombre");
-                // colTiro, colRetiro, numPlanchas ya definidos arriba en el cálculo de posturas
                 var tiros = parseInt(getText(pieza, "tiros") || "0");
                 var sobrante = parseInt(getText(pieza, "sobrante") || "0");
                 var pliegosBrutos = parseInt(getText(pieza, "pliegos") || "0");
+
+                // CORTE DE RESMAS INICIAL (Antes de impresión)
+                var servicios = pieza.querySelectorAll("servicios > servicio");
+                servicios.forEach(function(srv) {
+                    var sNombre = getText(srv, "nombre");
+                    var sTipo = getText(srv, "tipo");
+                    var sCant = parseFloat(getText(srv, "cantidad") || "1");
+                    if (sTipo === "Corte" && (sNombre.includes("Inicial") || sNombre.includes("Intermedio"))) {
+                        var resmas = Math.ceil(pliegosBrutos / 500);
+                        if (resmas < 1) resmas = 1;
+                        resmas = resmas * sCant;
+                        var costoRes = resmas * PRECIO_RESMA;
+                        addLinea(resmas + " resmas — Corte de resmas", costoRes);
+                    }
+                });
 
                 var maqConfig = null;
                 if (maquina.includes("SM74") || maquina.includes("SM 74")) maqConfig = "SM74";
                 if (maquina.includes("SM102") || maquina.includes("SM 102")) maqConfig = "SM102";
 
                 var tirajeNeto = tiros - sobrante;
-                // Tiraje para cobro:
-                // - Multi-postura: cantidad de la OT (cada postura se imprime 1× por unidad)
-                // - 1 postura con Hojas Iguales: tiros netos del XML (alto tiraje de 1 solo pliego)
                 var tirajeCobro = cantidadTotal;
                 if (posturas <= 1 && tirajeNeto > cantidadTotal) {
-                    tirajeCobro = tirajeNeto; // Hojas Iguales o similar con alto tiraje
+                    tirajeCobro = tirajeNeto;
                 }
                 var tirajeRedondeado = Math.ceil(tirajeCobro / 1000) * 1000;
                 if (tirajeRedondeado < 1000) tirajeRedondeado = 1000;
@@ -265,34 +270,29 @@
                     if (lk.precio > 0) {
                         var totalLinea = lk.precio * posturas;
                         var extMark = lk.extrapolated ? " [EXTRAPOLADO]" : "";
-                        lineas.push({ cat: 1, text: "Imp. " + maqConfig + " " + colTiro + "/" + colRetiro + " P" + numPieza + " (" + nombre + " - " + posturas + " posturas, tramo " + tirajeRedondeado + ")" + extMark, cant: 1, pu: totalLinea, total: totalLinea });
-                        totalNeto += totalLinea;
+                        var txt = tirajeCobro + " tiros — Impresión " + maqConfig + " (" + colTiro + "/" + colRetiro + ") · " + posturas + " posturas" + extMark;
+                        addLinea(txt, totalLinea);
                     }
-                    if (maqConfig === "SM74") planchasSM74 += numPlanchas;
-                    if (maqConfig === "SM102") planchasSM102 += numPlanchas;
+                    if (maqConfig === "SM74" && numPlanchas > 0) {
+                        var pPlanchas = numPlanchas * PRECIO_PLANCHA.SM74;
+                        addLinea(numPlanchas + " planchas CTP SM74", pPlanchas);
+                    }
+                    if (maqConfig === "SM102" && numPlanchas > 0) {
+                        var pPlanchas = numPlanchas * PRECIO_PLANCHA.SM102;
+                        addLinea(numPlanchas + " planchas CTP SM102", pPlanchas);
+                    }
                 } else if (maquina.toLowerCase().includes("ricoh") || maquina.toLowerCase().includes("konica") || maquina.toLowerCase().includes("digital")) {
                     var cantDigital = tiros + sobrante;
                     var totDigital = cantDigital * PRECIO_DIGITAL_RICOH;
-                    lineas.push({ cat: 1, text: "Imp. Digital P" + numPieza + " (" + nombre + " - " + cantDigital + " pliegos)", cant: cantDigital, pu: PRECIO_DIGITAL_RICOH, total: totDigital });
-                    totalNeto += totDigital;
+                    addLinea(cantDigital + " pliegos — Impresión Digital", totDigital);
                 }
 
-                // --- SERVICIOS POR PIEZA ---
-                var servicios = pieza.querySelectorAll("servicios > servicio");
+                // OTROS SERVICIOS POR PIEZA
                 servicios.forEach(function(srv) {
                     var sNombre = getText(srv, "nombre");
                     var sTipo = getText(srv, "tipo");
                     var sCant = parseFloat(getText(srv, "cantidad") || "1");
 
-                    // CORTE DE RESMAS
-                    if (sTipo === "Corte" && (sNombre.includes("Inicial") || sNombre.includes("Intermedio"))) {
-                        var resmas = Math.ceil(pliegosBrutos / 500);
-                        if (resmas < 1) resmas = 1;
-                        resmas = resmas * sCant;
-                        totalResmas += resmas;
-                    }
-
-                    // DOBLADO
                     if (sNombre.includes("Dobles pliegos")) {
                         var pagsMatch = sNombre.match(/(\d+)\s*Pag/i);
                         var pags = pagsMatch ? parseInt(pagsMatch[1]) : 8;
@@ -302,7 +302,6 @@
                         else if (pags === 8) { dobleces = 2; tipoVelocidad = "Lineal"; }
                         else if (pags === 16) { dobleces = 4; tipoVelocidad = "Compuesta"; }
 
-                        // Tiraje doblado = pliegos brutos del XML (ya incluye sobrantes)
                         var tirajeDoblado = Math.ceil(pliegosBrutos / 1000) * 1000;
                         if (tirajeDoblado < 1000) tirajeDoblado = 1000;
                         var lkDob = lookupGenerico("Dobladora Stahl", "Doblado", dobleces, tipoVelocidad, tirajeDoblado);
@@ -310,16 +309,13 @@
                         if (totalDob < MINIMUMS.doblado) totalDob = MINIMUMS.doblado;
                         if (totalDob > 0) {
                             var extDob = lkDob.extrapolated ? " [EXT]" : "";
-                            lineas.push({ cat: 4, text: "Doblado P" + numPieza + " (" + pags + " págs " + tipoVelocidad + ", tramo " + tirajeDoblado + ")" + extDob, cant: 1, pu: totalDob, total: totalDob });
-                            totalNeto += totalDob;
+                            addLinea(pliegosBrutos + " unidades × " + dobleces + " dobleces — Doblado (" + tipoVelocidad + ")" + extDob, totalDob);
                         }
                     }
 
-                    // TERMOLAMINADO
                     if (sTipo === "Laminado" || sNombre.includes("Laminado") || sNombre.includes("laminado")) {
                         var altoCorteMm = parseFloat(getText(pieza, "corte > dim_1") || "0");
                         var anchoCorteMm = parseFloat(getText(pieza, "corte > dim_2") || "0");
-                        // Fallback: intentar desde el texto del corte
                         if (altoCorteMm === 0 || anchoCorteMm === 0) {
                             var corteEl = pieza.querySelector("corte");
                             if (corteEl) {
@@ -333,32 +329,21 @@
                         var totalM2 = m2Pliego * lados * pliegosLaminado;
                         var pTermo = totalM2 * PRECIO_TERMOLAMINADO_M2;
                         if (pTermo < MINIMUMS.termolaminado) pTermo = MINIMUMS.termolaminado;
-                        lineas.push({ cat: 4, text: "Termolaminado P" + numPieza + " (" + totalM2.toFixed(2) + " m\u00B2)", cant: 1, pu: pTermo, total: pTermo });
-                        totalNeto += pTermo;
+                        addLinea(totalM2.toFixed(2) + " m² — Termolaminado", pTermo);
                     }
                 });
+                
+                if (lineasPieza.length > 0) {
+                    piezasOutput.push({ nombre: nombre, lineas: lineasPieza, subtotal: subtotalPieza });
+                }
             });
 
-            // --- PLANCHAS CTP ---
-            if (planchasSM74 > 0) {
-                var totPl74 = planchasSM74 * PRECIO_PLANCHA.SM74;
-                lineas.push({ cat: 2, text: "Planchas CTP SM74", cant: planchasSM74, pu: PRECIO_PLANCHA.SM74, total: totPl74 });
-                totalNeto += totPl74;
-            }
-            if (planchasSM102 > 0) {
-                var totPl102 = planchasSM102 * PRECIO_PLANCHA.SM102;
-                lineas.push({ cat: 2, text: "Planchas CTP SM102", cant: planchasSM102, pu: PRECIO_PLANCHA.SM102, total: totPl102 });
-                totalNeto += totPl102;
+            function addGeneral(texto, precio) {
+                generalesOutput.push({ texto: texto, precio: precio });
+                totalNeto += precio;
             }
 
-            // --- CORTE DE RESMAS (acumulado) ---
-            if (totalResmas > 0) {
-                var totCorteRes = totalResmas * PRECIO_RESMA;
-                lineas.push({ cat: 3, text: "Corte de resmas", cant: totalResmas, pu: PRECIO_RESMA, total: totCorteRes });
-                totalNeto += totCorteRes;
-            }
-
-            // --- ALZADO ---
+            // ALZADO
             var piezasAlzado = Math.round(totalPosturasAlzado);
             if (piezasAlzado < 2) piezasAlzado = 2;
             if (piezasAlzado > 30) piezasAlzado = 30;
@@ -366,48 +351,42 @@
             var lkAlz = lookupGenerico("Meson (Alzado/Intercalado)", "Alzado", piezasAlzado, null, tirajeAlzado);
             var pAlzado = lkAlz.precio;
             if (pAlzado < MINIMUMS.alzado) pAlzado = MINIMUMS.alzado;
-            var extAlz = lkAlz.extrapolated ? " [EXTRAPOLADO]" : "";
-            lineas.push({ cat: 4, text: "Alzado en mes\u00F3n (" + piezasAlzado + " piezas, tramo " + tirajeAlzado + ")" + extAlz, cant: 1, pu: pAlzado, total: pAlzado });
-            totalNeto += pAlzado;
+            if (pAlzado > 0) {
+                var extAlz = lkAlz.extrapolated ? " [EXTRAPOLADO]" : "";
+                addGeneral(cantidadTotal + " unidades · " + piezasAlzado + " piezas — Alzado" + extAlz, pAlzado);
+            }
 
-            // --- SERVICIOS GENERALES ---
+            // SERVICIOS GENERALES
             var srvGen = xml.querySelectorAll("servicios_generales > servicio");
-            var ladoCmAnillado = ladoCmMasLargo / 10; // mm a cm
-            if (ladoCmAnillado < 10) ladoCmAnillado = 27.5; // fallback desde descripción típica
+            var ladoCmAnillado = ladoCmMasLargo / 10;
+            if (ladoCmAnillado < 10) ladoCmAnillado = 27.5;
 
             srvGen.forEach(function(srv) {
                 var nombre = getText(srv, "nombre");
                 var tipo = getText(srv, "tipo");
 
-                // FAJADO
                 if (tipo === "Fajado" || nombre.includes("Fajado")) {
                     var cantFajados = Math.ceil(cantidadTotal / 5);
                     var totFaj = cantFajados * PRECIO_FAJADO;
-                    lineas.push({ cat: 4, text: "Fajado (c/5)", cant: cantFajados, pu: PRECIO_FAJADO, total: totFaj });
-                    totalNeto += totFaj;
+                    addGeneral(cantFajados + " × 5 unidades — Fajado", totFaj);
                 }
 
-                // EMPAQUETADO
                 if (nombre.includes("Empaquetado")) {
                     var cajas = Math.ceil(cantidadTotal / 25);
                     var totCaja = cajas * PRECIO_EMPAQUE_CAJA;
-                    lineas.push({ cat: 4, text: "Empaquetado cajas cart\u00F3n (c/25)", cant: cajas, pu: PRECIO_EMPAQUE_CAJA, total: totCaja });
-                    totalNeto += totCaja;
+                    addGeneral(cajas + " cajas — Empaquetado", totCaja);
                 }
 
-                // CORTE FINAL LIBROS
                 if (nombre.includes("Corte") && nombre.includes("Final") && nombre.includes("Libros")) {
-                    var cantCorteFinal = cantidadTotal + 50; // +50 sobrantes típicos
+                    var cantCorteFinal = cantidadTotal + 50;
                     var totCF = cantCorteFinal * PRECIO_CORTE_FINAL_LIBROS;
-                    lineas.push({ cat: 4, text: "Corte final libros", cant: cantCorteFinal, pu: PRECIO_CORTE_FINAL_LIBROS, total: totCF });
-                    totalNeto += totCF;
+                    addGeneral(cantCorteFinal + " unidades — Corte final libros", totCF);
                 }
 
-                // ANILLADO
                 if (tipo === "Anillado cuaderno" || nombre.includes("Anillado")) {
                     var anilloMatch = nombre.match(/Anillo\d{2}/);
                     var anilloKey = anilloMatch ? anilloMatch[0] : "Anillo02";
-                    var anilloData = ANILLOS.find(function(a) { return a.codigo === anilloKey; }) || ANILLOS[8]; // default Anillo02
+                    var anilloData = ANILLOS.find(function(a) { return a.codigo === anilloKey; }) || ANILLOS[8];
 
                     var tarifaFija = TARIFA_ANILLADO.blanda.precio;
                     if (nombre.toLowerCase().includes("dura")) tarifaFija = TARIFA_ANILLADO.dura.precio;
@@ -415,69 +394,72 @@
 
                     var anillosPorUnidad = contarAnillos(ladoCmAnillado, anilloData.paso);
                     var costoAnillos = anillosPorUnidad * anilloData.costo;
-
-                    // Hojas por unidad para perforación (todas las interiores)
                     var costoPerforacion = totalHojasPorUnidad * PRECIO_PERFORACION_HOJA;
-
                     var precioUnitario = tarifaFija + costoAnillos + costoPerforacion;
-                    var cantidadAnillado = cantidadTotal + 50; // +50 sobrantes
+                    var cantidadAnillado = cantidadTotal + 50;
                     var totalAnillado = precioUnitario * cantidadAnillado;
                     if (totalAnillado < MINIMUMS.anillado) totalAnillado = MINIMUMS.anillado;
-
-                    lineas.push({ cat: 4, text: "Anillado " + anilloData.label + " (con 50 sob.)", cant: cantidadAnillado, pu: precioUnitario, total: totalAnillado });
-                    totalNeto += totalAnillado;
+                    addGeneral(cantidadAnillado + " unidades — Anillado " + anilloData.label, totalAnillado);
                 }
 
-                // SERVICIOS MANUALES (sin tarifa estándar)
                 if (tipo === "Tapa Dura" || nombre.includes("Emplaque") || nombre.includes("Pegado") || tipo === "Retractilado") {
-                    lineas.push({ cat: 5, text: nombre + " [CONFIRMAR PRECIO]", cant: 1, pu: 0, total: 0 });
+                    manuales.push(nombre + " [CONFIRMAR PRECIO]");
                 }
             });
 
-            // --- GENERAR TEXTO DE SALIDA ---
             var txt = "";
-            txt += "DETALLE DE FACTURACI\u00D3N \u2014 OT " + ot + " (" + nombreProyecto + " - " + cantidadTotal + " UNIDADES)\n\n";
+            txt += "OT " + ot + " | " + nombreProyecto + " | Cant. " + cantidadTotal + "
+";
+            txt += "=========================================================================
 
-            txt += "1. IMPRESIONES OFFSET Y DIGITAL\n";
-            lineas.filter(function(l) { return l.cat === 1; }).forEach(function(l) {
-                txt += "- " + pad(l.text, 70) + " | Cant: " + pad(l.cant, 5) + " | P.Unit: " + pad(formatCLP(l.pu), 12) + " | Total: " + formatCLP(l.total) + "\n";
-            });
+";
 
-            txt += "\n2. PLANCHAS CTP\n";
-            lineas.filter(function(l) { return l.cat === 2; }).forEach(function(l) {
-                txt += "- " + pad(l.text, 70) + " | Cant: " + pad(l.cant, 5) + " | P.Unit: " + pad(formatCLP(l.pu), 12) + " | Total: " + formatCLP(l.total) + "\n";
-            });
-
-            txt += "\n3. PREPRENSA (CORTE DE RESMAS)\n";
-            lineas.filter(function(l) { return l.cat === 3; }).forEach(function(l) {
-                txt += "- " + pad(l.text, 70) + " | Cant: " + pad(l.cant, 5) + " | P.Unit: " + pad(formatCLP(l.pu), 12) + " | Total: " + formatCLP(l.total) + "\n";
-            });
-
-            txt += "\n4. POSTPRENSA Y TERMINACIONES\n";
-            lineas.filter(function(l) { return l.cat === 4; }).forEach(function(l) {
-                txt += "- " + pad(l.text, 70) + " | Cant: " + pad(l.cant, 5) + " | P.Unit: " + pad(formatCLP(l.pu), 12) + " | Total: " + formatCLP(l.total) + "\n";
-            });
-
-            var manuales = lineas.filter(function(l) { return l.cat === 5; });
-            if (manuales.length > 0) {
-                txt += "\n5. SERVICIOS MANUALES (confirmar con producci\u00F3n)\n";
-                manuales.forEach(function(l) {
-                    txt += "- " + l.text + "\n";
+            piezasOutput.forEach(function(po) {
+                txt += "[" + po.nombre + "]
+";
+                po.lineas.forEach(function(l, i) {
+                    txt += (i+1) + ". " + l.texto + " — " + formatCLP(l.precio) + "
+";
                 });
+                txt += "Subtotal " + po.nombre + ": " + formatCLP(po.subtotal) + "
+
+";
+            });
+
+            if (generalesOutput.length > 0) {
+                txt += "[Servicios Generales / Alzado]
+";
+                generalesOutput.forEach(function(l, i) {
+                    txt += (i+1) + ". " + l.texto + " — " + formatCLP(l.precio) + "
+";
+                });
+                txt += "
+";
+            }
+
+            if (manuales.length > 0) {
+                txt += "[Servicios Manuales]
+";
+                manuales.forEach(function(m, i) {
+                    txt += (i+1) + ". " + m + "
+";
+                });
+                txt += "
+";
             }
 
             var iva = totalNeto * 0.19;
             var bruto = totalNeto + iva;
-            txt += "\n" + repeat("-", 90) + "\n";
-            txt += "MONTO NETO TOTAL:  " + formatCLP(totalNeto) + "\n";
-            txt += "IVA (19%):         " + formatCLP(iva) + "\n";
-            txt += "MONTO TOTAL BRUTO: " + formatCLP(bruto) + "\n";
+            txt += "MONTO NETO TOTAL:  " + formatCLP(totalNeto) + "
+";
+            txt += "IVA (19%):         " + formatCLP(iva) + "
+";
+            txt += "MONTO TOTAL BRUTO: " + formatCLP(bruto) + "
+";
 
             document.getElementById('output').innerText = txt;
             document.getElementById('results-container').classList.remove('hidden');
-        }
-
-        function pad(s, n) {
+        }function pad(s, n) {
             var str = String(s);
             while (str.length < n) str += " ";
             return str;
