@@ -208,13 +208,13 @@
                 var totalColores = colTiro + colRetiro;
                 var posturas = 1;
                 if (totalColores > 0 && numPlanchas > 0) {
-                    posturas = numPlanchas / totalColores;
+                    posturas = Math.ceil(numPlanchas / totalColores);
                 } else if (cotizadoComo === "Páginas" || cotizadoComo === "Hojas Iguales") {
                     var maqNombre = getText(pieza, "maquina > nombre");
                     if (montaje.includes("4x2N") || maqNombre.includes("102")) {
-                        posturas = paginas / 16;
+                        posturas = Math.ceil(paginas / 16);
                     } else {
-                        posturas = paginas / 8;
+                        posturas = Math.ceil(paginas / 8);
                     }
                 }
 
