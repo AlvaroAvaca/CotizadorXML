@@ -415,51 +415,40 @@
             txt += "=========================================================================\n\n";
 
             piezasOutput.forEach(function(po) {
-                txt += "[" + po.nombre + "]
-";
+                txt += "[" + po.nombre + "]\n";
                 po.lineas.forEach(function(l, i) {
-                    txt += (i+1) + ". " + l.texto + " — " + formatCLP(l.precio) + "
-";
+                    txt += (i+1) + ". " + l.texto + " \u2014 " + formatCLP(l.precio) + "\n";
                 });
-                txt += "Subtotal " + po.nombre + ": " + formatCLP(po.subtotal) + "
-
-";
+                txt += "Subtotal " + po.nombre + ": " + formatCLP(po.subtotal) + "\n\n";
             });
 
             if (generalesOutput.length > 0) {
-                txt += "[Servicios Generales / Alzado]
-";
+                txt += "[Servicios Generales / Alzado]\n";
                 generalesOutput.forEach(function(l, i) {
-                    txt += (i+1) + ". " + l.texto + " — " + formatCLP(l.precio) + "
-";
+                    txt += (i+1) + ". " + l.texto + " \u2014 " + formatCLP(l.precio) + "\n";
                 });
-                txt += "
-";
+                txt += "\n";
             }
 
             if (manuales.length > 0) {
-                txt += "[Servicios Manuales]
-";
+                txt += "[Servicios Manuales]\n";
                 manuales.forEach(function(m, i) {
-                    txt += (i+1) + ". " + m + "
-";
+                    txt += (i+1) + ". " + m + "\n";
                 });
-                txt += "
-";
+                txt += "\n";
             }
 
             var iva = totalNeto * 0.19;
             var bruto = totalNeto + iva;
-            txt += "MONTO NETO TOTAL:  " + formatCLP(totalNeto) + "
-";
-            txt += "IVA (19%):         " + formatCLP(iva) + "
-";
-            txt += "MONTO TOTAL BRUTO: " + formatCLP(bruto) + "
-";
+            txt += "MONTO NETO TOTAL:  " + formatCLP(totalNeto) + "\n";
+            txt += "IVA (19%):         " + formatCLP(iva) + "\n";
+            txt += "MONTO TOTAL BRUTO: " + formatCLP(bruto) + "\n";
 
             document.getElementById('output').innerText = txt;
             document.getElementById('results-container').classList.remove('hidden');
-        }function pad(s, n) {
+        }
+
+        function pad(s, n) {
             var str = String(s);
             while (str.length < n) str += " ";
             return str;
