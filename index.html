@@ -349,6 +349,31 @@
                     }
                 }
 
+                // ENCONTRAR ALZADO
+                var tieneAlzado = false;
+                servicios.forEach(function(srv) {
+                    var sNombre = getText(srv, "nombre");
+                    if (sNombre.includes("Alzado")) tieneAlzado = true;
+                });
+
+                if (tieneAlzado) {
+                    var totalPliegosImpresos = tiros + sobrante;
+                    var tirajeAlzCobro = Math.ceil(totalPliegosImpresos / 2);
+                    var tirajeAlzRedondeado = Math.ceil(tirajeAlzCobro / 1000) * 1000;
+                    if (tirajeAlzRedondeado < 1000) tirajeAlzRedondeado = 1000;
+                    
+                    var piezasAlzado = 2; // Por convención manual
+                    
+                    var lkAlz = lookupGenerico("Meson (Alzado/Intercalado)", "Alzado", piezasAlzado, null, tirajeAlzRedondeado);
+                    var pAlzado = lkAlz.precio;
+                    if (pAlzado < MINIMUMS.alzado) pAlzado = MINIMUMS.alzado;
+                    if (pAlzado > 0) {
+                        var extAlz = lkAlz.extrapolated ? " [EXTRAPOLADO]" : "";
+                        var minMsg = (tirajeAlzCobro < 1000 && tirajeAlzRedondeado === 1000) ? " (se aplic\u00F3 el m\u00EDnimo de venta)" : "";
+                        addLinea(tirajeAlzCobro + " unidades (" + tirajeAlzCobro + " \u00D7 1 \u00EDtems) \u00B7 " + piezasAlzado + " piezas \u2014 Alzado" + minMsg + extAlz, pAlzado);
+                    }
+                }
+
                 servicios.forEach(function(srv) {
                     var sNombre = getText(srv, "nombre");
                     var sTipo = getText(srv, "tipo");
@@ -384,18 +409,7 @@
                 totalNeto += precio;
             }
 
-            // ALZADO
-            var piezasAlzado = Math.round(totalPosturasAlzado);
-            if (piezasAlzado < 2) piezasAlzado = 2;
-            if (piezasAlzado > 30) piezasAlzado = 30;
-            var tirajeAlzado = Math.ceil(cantidadTotal / 1000) * 1000;
-            var lkAlz = lookupGenerico("Meson (Alzado/Intercalado)", "Alzado", piezasAlzado, null, tirajeAlzado);
-            var pAlzado = lkAlz.precio;
-            if (pAlzado < MINIMUMS.alzado) pAlzado = MINIMUMS.alzado;
-            if (pAlzado > 0) {
-                var extAlz = lkAlz.extrapolated ? " [EXTRAPOLADO]" : "";
-                addGeneral(cantidadTotal + " unidades · " + piezasAlzado + " piezas — Alzado" + extAlz, pAlzado);
-            }
+                // ALZADO FUE MOVIDO DENTRO DE CADA PIEZA
 
             // SERVICIOS GENERALES
             var srvGen = xml.querySelectorAll("servicios_generales > servicio");
