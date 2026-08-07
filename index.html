@@ -289,31 +289,48 @@
                     addLinea(cantDigital + " pliegos — Impresión Digital", totDigital);
                 }
 
-                // OTROS SERVICIOS POR PIEZA
+                // ENCONTRAR MAXIMO DOBLADO
+                var maxDobleces = 0;
+                var maxDoblecesTipo = "Lineal";
+                var tieneDoblado = false;
+
+                servicios.forEach(function(srv) {
+                    var sNombre = getText(srv, "nombre");
+                    if (sNombre.includes("Dobles pliegos")) {
+                        tieneDoblado = true;
+                        var pagsMatch = sNombre.match(/(\d+)\s*Pag/i);
+                        var pags = pagsMatch ? parseInt(pagsMatch[1]) : 8;
+                        var d = 1;
+                        var t = "Lineal";
+                        if (pags === 4) { d = 1; t = "Lineal"; }
+                        else if (pags === 8) { d = 2; t = "Lineal"; }
+                        else if (pags >= 16) { d = 4; t = "Compuesta"; }
+
+                        if (d > maxDobleces) {
+                            maxDobleces = d;
+                            maxDoblecesTipo = t;
+                        }
+                    }
+                });
+
+                if (tieneDoblado) {
+                    var totalPliegosImpresos = tiros + sobrante;
+                    var tirajeDoblado = Math.ceil(totalPliegosImpresos / 1000) * 1000;
+                    if (tirajeDoblado < 1000) tirajeDoblado = 1000;
+                    
+                    var lkDob = lookupGenerico("Dobladora Stahl", "Doblado", maxDobleces, maxDoblecesTipo, tirajeDoblado);
+                    var totalDob = lkDob.precio;
+                    if (totalDob < MINIMUMS.doblado) totalDob = MINIMUMS.doblado;
+                    if (totalDob > 0) {
+                        var extDob = lkDob.extrapolated ? " [EXT]" : "";
+                        addLinea(totalPliegosImpresos + " unidades × " + maxDobleces + " dobleces \u2014 Doblado (" + maxDoblecesTipo + ")" + extDob, totalDob);
+                    }
+                }
+
                 servicios.forEach(function(srv) {
                     var sNombre = getText(srv, "nombre");
                     var sTipo = getText(srv, "tipo");
                     var sCant = parseFloat(getText(srv, "cantidad") || "1");
-
-                    if (sNombre.includes("Dobles pliegos")) {
-                        var pagsMatch = sNombre.match(/(\d+)\s*Pag/i);
-                        var pags = pagsMatch ? parseInt(pagsMatch[1]) : 8;
-                        var dobleces = 1;
-                        var tipoVelocidad = "Lineal";
-                        if (pags === 4) { dobleces = 1; tipoVelocidad = "Lineal"; }
-                        else if (pags === 8) { dobleces = 2; tipoVelocidad = "Lineal"; }
-                        else if (pags === 16) { dobleces = 4; tipoVelocidad = "Compuesta"; }
-
-                        var tirajeDoblado = Math.ceil(pliegosBrutos / 1000) * 1000;
-                        if (tirajeDoblado < 1000) tirajeDoblado = 1000;
-                        var lkDob = lookupGenerico("Dobladora Stahl", "Doblado", dobleces, tipoVelocidad, tirajeDoblado);
-                        var totalDob = lkDob.precio;
-                        if (totalDob < MINIMUMS.doblado) totalDob = MINIMUMS.doblado;
-                        if (totalDob > 0) {
-                            var extDob = lkDob.extrapolated ? " [EXT]" : "";
-                            addLinea(pliegosBrutos + " unidades × " + dobleces + " dobleces — Doblado (" + tipoVelocidad + ")" + extDob, totalDob);
-                        }
-                    }
 
                     if (sTipo === "Laminado" || sNombre.includes("Laminado") || sNombre.includes("laminado")) {
                         var altoCorteMm = parseFloat(getText(pieza, "corte > dim_1") || "0");
