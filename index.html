@@ -268,13 +268,45 @@
                 if (tirajeRedondeado < 1000) tirajeRedondeado = 1000;
 
                 if (maqConfig) {
-                    var lk = lookupGenerico(maqConfig, "Impresion", colTiro, colRetiro, tirajeRedondeado);
-                    if (lk.precio > 0) {
-                        var totalLinea = lk.precio * posturas;
-                        var extMark = lk.extrapolated ? " [EXTRAPOLADO]" : "";
-                        var txt = tirajeCobro + " tiros — Impresión " + maqConfig + " (" + colTiro + "/" + colRetiro + ") · " + posturas + " posturas" + extMark;
-                        addLinea(txt, totalLinea);
+                    var posturasEnteras = Math.floor(posturas);
+                    var posturasMedias = (posturas - posturasEnteras > 0) ? 1 : 0;
+                    
+                    var costoTotalImpresion = 0;
+                    var detalleLineas = [];
+
+                    if (posturasEnteras > 0) {
+                        var lk = lookupGenerico(maqConfig, "Impresion", colTiro, colRetiro, tirajeRedondeado);
+                        if (lk.precio > 0) {
+                            var totalLinea = lk.precio * posturasEnteras;
+                            costoTotalImpresion += totalLinea;
+                            var extMark = lk.extrapolated ? " [EXTRAPOLADO]" : "";
+                            detalleLineas.push(posturasEnteras + " × " + tirajeCobro + " tiros \u2014 Impresión " + maqConfig + " (" + colTiro + "/" + colRetiro + ")" + extMark);
+                        }
                     }
+
+                    if (posturasMedias > 0) {
+                        // Media postura (tiro y retiro en sí) usa la mitad del tiraje
+                        var tirajeMedioCobro = Math.ceil(tirajeCobro / 2);
+                        var tirajeMedioRedondeado = Math.ceil(tirajeMedioCobro / 1000) * 1000;
+                        if (tirajeMedioRedondeado < 1000) tirajeMedioRedondeado = 1000;
+
+                        var lkMedia = lookupGenerico(maqConfig, "Impresion", colTiro, colRetiro, tirajeMedioRedondeado);
+                        if (lkMedia.precio > 0) {
+                            costoTotalImpresion += lkMedia.precio;
+                            var extMarkMedia = lkMedia.extrapolated ? " [EXTRAPOLADO]" : "";
+                            detalleLineas.push("1 × " + tirajeMedioCobro + " tiros \u2014 Impresión " + maqConfig + " (" + colTiro + "/" + colRetiro + ") (Tiro y Retiro en sí)" + extMarkMedia);
+                        }
+                    }
+
+                    if (costoTotalImpresion > 0) {
+                        // Unificar en una sola línea de display para mantenerlo limpio, pero con el costo calculado preciso
+                        var txtFull = tirajeCobro + " tiros \u2014 Impresi\u00F3n " + maqConfig + " (" + colTiro + "/" + colRetiro + ") \u00B7 " + posturas + " posturas";
+                        if (posturasMedias > 0 && posturasEnteras > 0) {
+                            txtFull = posturasEnteras + " \u00D7 " + tirajeCobro + " tiros + 1 \u00D7 " + Math.ceil(tirajeCobro/2) + " tiros \u2014 Impresi\u00F3n " + maqConfig + " (" + colTiro + "/" + colRetiro + ") \u00B7 " + posturas + " posturas";
+                        }
+                        addLinea(txtFull, costoTotalImpresion);
+                    }
+
                     if (maqConfig === "SM74" && numPlanchas > 0) {
                         var pPlanchas = numPlanchas * PRECIO_PLANCHA.SM74;
                         addLinea(numPlanchas + " planchas CTP SM74", pPlanchas);
