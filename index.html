@@ -208,13 +208,13 @@
                 var totalColores = colTiro + colRetiro;
                 var posturas = 1;
                 if (totalColores > 0 && numPlanchas > 0) {
-                    posturas = Math.ceil(numPlanchas / totalColores);
+                    posturas = numPlanchas / totalColores; // DEBE SER DECIMAL PARA DETECTAR MEDIAS POSTURAS
                 } else if (cotizadoComo === "Páginas" || cotizadoComo === "Hojas Iguales") {
                     var maqNombre = getText(pieza, "maquina > nombre");
                     if (montaje.includes("4x2N") || maqNombre.includes("102")) {
-                        posturas = Math.ceil(paginas / 16);
+                        posturas = paginas / 16;
                     } else {
-                        posturas = Math.ceil(paginas / 8);
+                        posturas = paginas / 8;
                     }
                 }
 
@@ -277,10 +277,14 @@
                     if (posturasEnteras > 0) {
                         var lk = lookupGenerico(maqConfig, "Impresion", colTiro, colRetiro, tirajeRedondeado);
                         if (lk.precio > 0) {
-                            var totalLinea = lk.precio * posturasEnteras;
-                            costoTotalImpresion += totalLinea;
+                            var planchasEnteras = (posturasEnteras * totalColores);
+                            var costoPlanchasEnteras = planchasEnteras * (maqConfig === "SM74" ? PRECIO_PLANCHA.SM74 : PRECIO_PLANCHA.SM102);
+                            var totalLinea = (lk.precio * posturasEnteras) + costoPlanchasEnteras;
                             var extMark = lk.extrapolated ? " [EXTRAPOLADO]" : "";
-                            detalleLineas.push(posturasEnteras + " × " + tirajeCobro + " tiros \u2014 Impresión " + maqConfig + " (" + colTiro + "/" + colRetiro + ")" + extMark);
+                            var prefix = (posturasEnteras === 1 && posturasMedias === 0) ? "" : posturasEnteras + " \u00D7 ";
+                            var planchasTxt = (posturasEnteras === 1 && posturasMedias === 0) ? planchasEnteras : posturasEnteras + " \u00D7 " + totalColores + " = " + planchasEnteras;
+                            var txt = prefix + tirajeCobro + " tiros \u2014 Impresi\u00F3n " + maqConfig + " (" + colTiro + "/" + colRetiro + ") \u00B7 " + planchasTxt + " planchas CTP " + maqConfig + extMark;
+                            addLinea(txt, totalLinea);
                         }
                     }
 
@@ -292,28 +296,14 @@
 
                         var lkMedia = lookupGenerico(maqConfig, "Impresion", colTiro, colRetiro, tirajeMedioRedondeado);
                         if (lkMedia.precio > 0) {
-                            costoTotalImpresion += lkMedia.precio;
+                            var planchasMedia = numPlanchas - (posturasEnteras * totalColores);
+                            var costoPlanchasMedia = planchasMedia * (maqConfig === "SM74" ? PRECIO_PLANCHA.SM74 : PRECIO_PLANCHA.SM102);
+                            var totalLineaMedia = lkMedia.precio + costoPlanchasMedia;
+                            var minVentaTxt = (tirajeMedioCobro < 1000 && tirajeMedioRedondeado === 1000) ? " (m\u00EDnimo de venta: 1.000 tiros)" : "";
                             var extMarkMedia = lkMedia.extrapolated ? " [EXTRAPOLADO]" : "";
-                            detalleLineas.push("1 × " + tirajeMedioCobro + " tiros \u2014 Impresión " + maqConfig + " (" + colTiro + "/" + colRetiro + ") (Tiro y Retiro en sí)" + extMarkMedia);
+                            var txtMedia = tirajeMedioCobro + " tiros \u2014 Impresi\u00F3n " + maqConfig + " (" + colTiro + "/" + colRetiro + ")" + minVentaTxt + " \u00B7 " + planchasMedia + " planchas CTP " + maqConfig + " (tiro y retiro en s\u00ED)" + extMarkMedia;
+                            addLinea(txtMedia, totalLineaMedia);
                         }
-                    }
-
-                    if (costoTotalImpresion > 0) {
-                        // Unificar en una sola línea de display para mantenerlo limpio, pero con el costo calculado preciso
-                        var txtFull = tirajeCobro + " tiros \u2014 Impresi\u00F3n " + maqConfig + " (" + colTiro + "/" + colRetiro + ") \u00B7 " + posturas + " posturas";
-                        if (posturasMedias > 0 && posturasEnteras > 0) {
-                            txtFull = posturasEnteras + " \u00D7 " + tirajeCobro + " tiros + 1 \u00D7 " + Math.ceil(tirajeCobro/2) + " tiros \u2014 Impresi\u00F3n " + maqConfig + " (" + colTiro + "/" + colRetiro + ") \u00B7 " + posturas + " posturas";
-                        }
-                        addLinea(txtFull, costoTotalImpresion);
-                    }
-
-                    if (maqConfig === "SM74" && numPlanchas > 0) {
-                        var pPlanchas = numPlanchas * PRECIO_PLANCHA.SM74;
-                        addLinea(numPlanchas + " planchas CTP SM74", pPlanchas);
-                    }
-                    if (maqConfig === "SM102" && numPlanchas > 0) {
-                        var pPlanchas = numPlanchas * PRECIO_PLANCHA.SM102;
-                        addLinea(numPlanchas + " planchas CTP SM102", pPlanchas);
                     }
                 } else if (maquina.toLowerCase().includes("ricoh") || maquina.toLowerCase().includes("konica") || maquina.toLowerCase().includes("digital")) {
                     var cantDigital = tiros + sobrante;
